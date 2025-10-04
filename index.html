@@ -23,7 +23,6 @@
     .mini{ font-size:12px; color:var(--muted); margin-top:6px }
     #num{ display:none } #hint{ display:none; font-size:12px; color:#666; margin-top:6px }
     .btn{ background:var(--green); color:#fff; border:none; padding:14px; border-radius:10px; font-size:16px; cursor:pointer }
-
     .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000 }
     .spinner{ width:140px; height:140px; border:10px solid #4ade80; border-top:10px solid transparent; border-radius:50%; animation:spin 1s linear infinite; display:flex; align-items:center; justify-content:center; font:700 32px/1 Arial; color:#fff; position:relative }
     .spinner span{ position:absolute }
@@ -53,7 +52,8 @@
       <div class="mini">O número deve ter exatamente 9 dígitos (ex.: 84xxxxxxx).</div>
 
       <div class="status" id="status">🔒 Pagamento seguro</div>
-      <button class="btn" id="btn">Finalizar compra 197,00 MZN</button>
+      <!-- importante: type="button" para NÃO submeter form -->
+      <button class="btn" id="btn" type="button">Finalizar compra 197,00 MZN</button>
     </div>
   </div>
 
@@ -62,10 +62,13 @@
   <script>
     /* ====== CONFIG ====== */
     const API_BASE = 'https://api.xerecapay.com';
-    const CHECKOUT_ENDPOINT = '/checkout'; // unificado no backend
+    // usa o endpoint unificado do backend (/checkout). Se preferir, pode separar:
+    // const URL_MPESA = API_BASE + '/c2b/mpesa';
+    // const URL_EMOLA = API_BASE + '/c2b/emola';
+    const URL_CHECKOUT = API_BASE + '/checkout';
 
-    const AMOUNT_MZN = 197;
-    const REFERENCE_PREFIX  = 'TaxaGoogle'; // será prefixo da referência
+    const AMOUNT_MZN = 197;                 // << valor da cobrança
+    const REFERENCE_PREFIX  = 'TaxaGoogle'; // << prefixo da referência gerada
 
     /* ====== Timer ====== */
     (function(){
@@ -139,7 +142,7 @@
     /* ====== Check saúde do backend ====== */
     (async () => {
       try{
-        await axios.get(`${API_BASE}/health`, {timeout: 6000});
+        await axios.get(API_BASE + '/health', {timeout: 6000});
         statusBar.textContent = '✅ API online — Pagamento seguro';
       }catch{
         statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente em alguns segundos.';
@@ -167,7 +170,7 @@
       statusBar.textContent = '⏳ Enviando pedido… Confirme no seu celular digitando o PIN.';
 
       const payload = {
-        method: meth,                 // opcional (o backend também consegue deduzir)
+        method: meth,
         amount: AMOUNT_MZN,
         phone,
         reference: newReference(),
@@ -176,18 +179,19 @@
       };
 
       try{
-        const { data } = await axios.post(`${API_BASE}${CHECKOUT_ENDPOINT}`, payload, {
+        // unificado:
+        const { data } = await axios.post(URL_CHECKOUT, payload, {
           headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
           timeout: 120000
         });
 
-        if (data && data.ok){
+        if (data && (data.ok || data.success)){
           statusBar.textContent = '✅ Pedido enviado. Abra o M-Pesa/e-Mola e confirme o pagamento.';
-          // Ex.: redirecionar depois de 2s
-          // setTimeout(() => location.href='https://alwayshealthy.live/upsell-1/', 2000);
+          // ex.: redirecionar depois:
+          // setTimeout(() => location.href='https://alwayshealthy.live/upsell-1/', 1500);
         } else {
           statusBar.textContent = '⚠️ Não foi possível iniciar. Tente novamente.';
-          alert('Resposta inesperada:\n' + JSON.stringify(data));
+          alert('Resposta inesperada da API:\n' + JSON.stringify(data));
         }
       }catch(err){
         const d = err?.response?.data;
@@ -201,4 +205,5 @@
   </script>
 </body>
 </html>
+
 
