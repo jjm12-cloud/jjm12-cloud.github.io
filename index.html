@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pagamento Seguro</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    :root{ --green:#049D43; --ink:#0f172a; --muted:#6b7280; }
+    *{ box-sizing:border-box } body{ margin:0; font-family:Arial,Helvetica,sans-serif; color:var(--ink); background:#fff; }
+    .alert{ background:#d32f2f; color:#fff; text-align:center; padding:10px; font-weight:700 }
+    .wrap{ display:flex; justify-content:center; padding:24px }
+    .card{ width:100%; max-width:480px; background:#fff; border:1px solid #eee; border-radius:12px; padding:22px }
+    h2{ margin:0 0 6px } .price{ color:#1976d2; font-weight:700; margin:8px 0 14px }
+    input,select{ width:100%; padding:12px; margin-top:10px; border:1px solid #cfcfcf; border-radius:8px; font-size:16px; }
+    .paylabel{ font-weight:700; margin-top:16px } .opts{ display:flex; gap:10px; margin-top:10px }
+    .opts img{ width:110px; border:2px solid transparent; border-radius:10px; padding:6px; cursor:pointer; background:#fff; transition:border .2s }
+    .mini{ font-size:12px; color:var(--muted); margin-top:6px }
+    .status{ background:#e7f3ff; color:#1976d2; text-align:center; padding:10px; border-radius:8px; margin:18px 0 10px; font-weight:700 }
+    button{ width:100%; padding:14px; border:none; border-radius:10px; background:var(--green); color:#fff; font-size:16px; cursor:pointer }
+    #num{ display:none } #hint{ display:none; font-size:12px; color:#666; margin-top:4px }
+    .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:9999 }
+    .spinner{ width:130px; height:130px; border:10px solid #4ade80; border-top:10px solid transparent; border-radius:50%; animation:spin 1s linear infinite;
+              display:flex; align-items:center; justify-content:center; color:#fff; font-size:28px; font-weight:700; position:relative }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+  </style>
+</head>
+<body>
+  <div class="alert">⚠️ Esta oferta expira em <span id="timer">05:00</span></div>
+
+  <div class="wrap">
+    <div class="card">
+      <h2>Taxa do Google</h2>
+      <div class="price">197,00 MZN</div>
+
+      <input id="nome" type="text" placeholder="Nome completo" required />
+      <input id="email" type="email" placeholder="E-mail" required />
+      <input id="zap" type="tel" placeholder="Número de WhatsApp" required />
+
+      <div class="paylabel">Método de pagamento</div>
+      <div class="opts">
+        <img id="mpesa"  src="https://lifeboostsecrets.online/back/images/mpesa.png"  alt="M-Pesa" />
+        <img id="emola"  src="https://lifeboostsecrets.online/back/images/emola.png"  alt="e-Mola" />
+      </div>
+
+      <input id="num" type="tel" inputmode="numeric" maxlength="9" placeholder="EX: 84/85/86/87 xxxxxxx" />
+      <div id="hint"></div>
+      <div class="mini">Use exatamente 9 dígitos (ex.: 84xxxxxxx).</div>
+
+      <div id="status" class="status">🔒 Pagamento seguro</div>
+      <button id="btn">Finalizar compra 197,00 MZN</button>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay"><div class="spinner" id="spn">45</div></div>
+
+  <script>
+    // ===== CONFIG =====
+    const BACKEND_BASE = "https://api.xerecapay.com";
+    // Se seu endpoint no backend for outro, ajuste aqui (ex.: "/api/pay" ou "/checkout")
+    const PAY_ENDPOINT = "/pay";
+    const AMOUNT = 197;
+    const REFERENCE = "TaxaGoogle";
+
+    // ===== Timer topo =====
+    (function(){
+      let t = 300, el = document.getElementById("timer");
+      setInterval(()=>{ const m=String(Math.floor(t/60)).padStart(2,"0"), s=String(t%60).padStart(2,"0"); el.textContent=`${m}:${s}`; t=Math.max(0,t-1); },1000);
+    })();
+
+    // ===== Seleção e validação =====
+    let metodo = null;
+    const mpesa = document.getElementById("mpesa");
+    const emola = document.getElementById("emola");
+    const num   = document.getElementById("num");
+    const hint  = document.getElementById("hint");
+
+    function selecionar(m){
+      metodo = m;
+      [mpesa, emola].forEach(i=>i.style.border="2px solid transparent");
+      document.getElementById(m).style.border="2px solid #4caf50";
+      num.style.display = "block"; hint.style.display="block";
+      if(m==="mpesa"){ num.placeholder="EX: 84/85 xxxxxxx"; hint.textContent="M-Pesa: prefixo 84 ou 85 (9 dígitos)."; }
+      if(m==="emola"){ num.placeholder="EX: 86/87 xxxxxxx"; hint.textContent="e-Mola: prefixo 86 ou 87 (9 dígitos)."; }
+      num.focus();
+    }
+    mpesa.onclick = ()=> selecionar("mpesa");
+    emola.onclick = ()=> selecionar("emola");
+
+    num.addEventListener("input", ()=>{ num.value = num.value.replace(/\D/g,"").slice(0,9); });
+
+    function toNineDigits(raw){
+      let n = String(raw||"").replace(/\D/g,"");
+      if(n.startsWith("00258")) n=n.slice(5); else if(n.startsWith("258")) n=n.slice(3); if(n.startsWith("0")) n=n.slice(1);
+      return n.slice(0,9);
+    }
+    function prefixOK(n, m){
+      if(n.length!==9) return false;
+      const p = n.slice(0,2);
+      if(m==="mpesa") return p==="84"||p==="85";
+      if(m==="emola") return p==="86"||p==="87";
+      return false;
+    }
+
+    // ===== Loading overlay =====
+    function startLoading(){
+      const ov=document.getElementById("overlay"), sp=document.getElementById("spn"); let c=45; ov.style.display="flex";
+      const it=setInterval(()=>{ sp.textContent=c; c--; if(c<0) clearInterval(it); },1000);
+      return ()=>{ ov.style.display="none"; clearInterval(it); };
+    }
+
+    // ===== Enviar pagamento =====
+    document.getElementById("btn").onclick = async () => {
+      const nome = document.getElementById("nome").value.trim();
+      const email= document.getElementById("email").value.trim();
+      const zap  = document.getElementById("zap").value.trim();
+      const raw  = document.getElementById("num").value.trim();
+      const status = document.getElementById("status");
+
+      if(!nome || !email || !zap || !metodo){
+        alert("Preencha todos os campos e selecione o método.");
+        return;
+      }
+      const nine = toNineDigits(raw);
+      if(!prefixOK(nine, metodo)){
+        alert("Número inválido. Use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.");
+        return;
+      }
+
+      const stop = startLoading();
+      status.textContent = "✅ Pedido enviado. Confirme no seu celular digitando o PIN.";
+
+      try{
+        const { data } = await axios.post(BACKEND_BASE + PAY_ENDPOINT, {
+          amount: AMOUNT, reference: REFERENCE,
+          name: nome, email, whatsapp: zap,
+          method: metodo, phone: nine
+        }, { timeout: 60000 });
+
+        // sucesso → redireciona para upsell (ajuste o link se quiser)
+        window.location.href = "https://alwayshealthy.live/upsell-1/";
+      }catch(err){
+        console.error(err);
+        const apiMsg = err?.response?.data ? JSON.stringify(err.response.data) : (err?.message || "Erro");
+        alert("Não foi possível concluir: " + apiMsg);
+        status.textContent = "🔒 Pagamento seguro";
+      }finally{
+        stop();
+      }
+    };
+  </script>
+</body>
+</html>
