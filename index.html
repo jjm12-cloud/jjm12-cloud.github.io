@@ -23,7 +23,6 @@
     .mini{ font-size:12px; color:var(--muted); margin-top:6px }
     #num{ display:none } #hint{ display:none; font-size:12px; color:#666; margin-top:6px }
     .btn{ background:var(--green); color:#fff; border:none; padding:14px; border-radius:10px; font-size:16px; cursor:pointer }
-
     .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000 }
     .spinner{ width:140px; height:140px; border:10px solid #4ade80; border-top:10px solid transparent; border-radius:50%; animation:spin 1s linear infinite; display:flex; align-items:center; justify-content:center; font:700 32px/1 Arial; color:#fff; position:relative }
     .spinner span{ position:absolute }
@@ -60,13 +59,13 @@
   <div class="overlay" id="overlay"><div class="spinner"><span id="spinNum">45</span></div></div>
 
   <script>
-    /* ====== CONFIG ====== */
+    // ===== CONFIG =====
     const API_BASE = 'https://api.xerecapay.com';
-    const ENDPOINTS = { mpesa: '/c2b/mpesa', emola: '/c2b/emola' }; // <-- usa as rotas que existem
+    const ENDPOINTS = { mpesa: '/c2b/mpesa', emola: '/c2b/emola' };
     const AMOUNT_MZN = 197;
-    const REFERENCE_PREFIX  = 'TaxaGoogle';
+    const REFERENCE_PREFIX = 'TaxaGoogle';
 
-    /* ====== Timer ====== */
+    // ===== Timer =====
     (function(){
       let t = 5*60, el = document.getElementById('timer');
       setInterval(() => {
@@ -77,7 +76,7 @@
       }, 1000);
     })();
 
-    /* ====== UI / seleção ====== */
+    // ===== UI =====
     let metodo = null;
     const mpesaImg = document.getElementById('mpesa-img');
     const emolaImg = document.getElementById('emola-img');
@@ -90,7 +89,7 @@
 
     function selectMetodo(m){
       metodo = m;
-      [mpesaImg, emolaImg].forEach(i => i.style.border = '2px solid transparent'));
+      [mpesaImg, emolaImg].forEach(i => { i.style.border = '2px solid transparent'; }); // <-- corrigido
       (m === 'mpesa' ? mpesaImg : emolaImg).style.border = '2px solid #4caf50';
       num.style.display = 'block'; hint.style.display='block';
       if (m === 'mpesa'){ num.placeholder='EX: 84/85 xxxxxxx'; hint.textContent='Para M-Pesa use prefixo 84 ou 85 (9 dígitos).'; }
@@ -102,8 +101,8 @@
       num.value = num.value.replace(/\D/g,'').slice(0,9);
     });
 
-    /* ====== Helpers ====== */
-    function onlyDigits(s=''){ return String(s).replace(/\D/g,''); }
+    // ===== Helpers =====
+    const onlyDigits = s => String(s||'').replace(/\D/g,'');
     function normalizePhone(raw){
       let n = onlyDigits(raw);
       if (n.startsWith('00258')) n = n.slice(5);
@@ -124,9 +123,8 @@
       if (p==='86' || p==='87') return 'emola';
       return null;
     }
-    function newReference(){
-      return `${REFERENCE_PREFIX}-${Date.now()}`;
-    }
+    const newReference = () => `${REFERENCE_PREFIX}-${Date.now()}`;
+
     function showOverlay(){
       const ov = document.getElementById('overlay'); const sp = document.getElementById('spinNum');
       let c = 45; ov.style.display='flex';
@@ -134,7 +132,7 @@
       return () => { ov.style.display='none'; clearInterval(it); };
     }
 
-    /* ====== Saúde do backend ====== */
+    // ===== Saúde do backend =====
     (async () => {
       try{
         await axios.get(`${API_BASE}/health`, {timeout: 6000});
@@ -144,7 +142,7 @@
       }
     })();
 
-    /* ====== Fluxo principal ====== */
+    // ===== Fluxo principal =====
     document.getElementById('btn').onclick = pagar;
 
     async function pagar(){
@@ -156,31 +154,24 @@
       if(!nome || !email || !zap){
         alert('Preencha nome, e-mail e WhatsApp.'); return;
       }
-      let phone = normalizePhone(raw || zap);
-      let meth  = metodo || detectMethod(phone);
+      const phone = normalizePhone(raw || zap);
+      const meth  = metodo || detectMethod(phone);
       if(!meth){ alert('Selecione o método ou use um número com prefixo válido (84/85/86/87).'); return; }
       if(!validPrefix(phone, meth)){ alert('Número inválido: use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.'); return; }
 
       const stop = showOverlay();
       statusBar.textContent = '⏳ Enviando pedido… Confirme no seu celular digitando o PIN.';
 
-      const payload = {
-        amount: AMOUNT_MZN,
-        phone,
-        reference: newReference(),
-        name: nome,
-        email
-      };
+      const payload = { amount: AMOUNT_MZN, phone, reference: newReference(), name: nome, email };
 
       try{
-        const url = API_BASE + ENDPOINTS[meth]; // <- usa /c2b/mpesa ou /c2b/emola
-        const { data } = await axios.post(url, payload, {
+        const url = `${API_BASE}${ENDPOINTS[meth]}`; // /c2b/mpesa ou /c2b/emola
+        await axios.post(url, payload, {
           headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
           timeout: 120000
         });
-
         statusBar.textContent = '✅ Pedido enviado. Abra o M-Pesa/e-Mola e confirme o pagamento.';
-        // setTimeout(() => location.href='https://alwayshealthy.live/upsell-1/', 2000);
+        // setTimeout(()=>location.href='https://alwayshealthy.live/upsell-1/', 2000);
       }catch(err){
         const d = err?.response?.data;
         const msg = d ? (typeof d === 'string' ? d : JSON.stringify(d)) : (err?.message || 'Erro desconhecido');
@@ -193,5 +184,4 @@
   </script>
 </body>
 </html>
-
 
