@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Pagamento Seguro</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-
   <style>
     :root{ --green:#049D43; --ink:#0f172a; --muted:#6b7280; }
     *{ box-sizing:border-box }
@@ -25,7 +24,6 @@
     #num{ display:none } #hint{ display:none; font-size:12px; color:#666; margin-top:6px }
     .btn{ background:var(--green); color:#fff; border:none; padding:14px; border-radius:10px; font-size:16px; cursor:pointer }
 
-    /* overlay */
     .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000 }
     .spinner{ width:140px; height:140px; border:10px solid #4ade80; border-top:10px solid transparent; border-radius:50%; animation:spin 1s linear infinite; display:flex; align-items:center; justify-content:center; font:700 32px/1 Arial; color:#fff; position:relative }
     .spinner span{ position:absolute }
@@ -64,11 +62,10 @@
   <script>
     /* ====== CONFIG ====== */
     const API_BASE = 'https://api.xerecapay.com';
-    // Se seus endpoints no backend forem diferentes, troque aqui:
-    const ENDPOINTS = { mpesa: '/c2b/mpesa', emola: '/c2b/emola' };
+    const CHECKOUT_ENDPOINT = '/checkout'; // unificado no backend
 
-    const AMOUNT_MZN = '197';
-    const REFERENCE  = 'TaxaGoogle';
+    const AMOUNT_MZN = 197;
+    const REFERENCE_PREFIX  = 'TaxaGoogle'; // será prefixo da referência
 
     /* ====== Timer ====== */
     (function(){
@@ -123,6 +120,15 @@
       if (m === 'emola') return (p === '86' || p === '87');
       return false;
     }
+    function detectMethod(n){
+      const p = n.slice(0,2);
+      if (p==='84' || p==='85') return 'mpesa';
+      if (p==='86' || p==='87') return 'emola';
+      return null;
+    }
+    function newReference(){
+      return `${REFERENCE_PREFIX}-${Date.now()}`;
+    }
     function showOverlay(){
       const ov = document.getElementById('overlay'); const sp = document.getElementById('spinNum');
       let c = 45; ov.style.display='flex';
@@ -149,39 +155,43 @@
       const zap   = document.getElementById('zap').value.trim();
       const raw   = num.value.trim();
 
-      if(!nome || !email || !zap || !metodo){
-        alert('Preencha nome, e-mail, WhatsApp e selecione o método de pagamento.'); return;
+      if(!nome || !email || !zap){
+        alert('Preencha nome, e-mail e WhatsApp.'); return;
       }
-      const phone = normalizePhone(raw || zap);
-      if(!validPrefix(phone, metodo)){
-        alert('Número inválido: use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.'); return;
-      }
+      let phone = normalizePhone(raw || zap);
+      let meth  = metodo || detectMethod(phone);
+      if(!meth){ alert('Selecione o método ou use um número com prefixo válido (84/85/86/87).'); return; }
+      if(!validPrefix(phone, meth)){ alert('Número inválido: use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.'); return; }
 
       const stop = showOverlay();
       statusBar.textContent = '⏳ Enviando pedido… Confirme no seu celular digitando o PIN.';
 
       const payload = {
+        method: meth,                 // opcional (o backend também consegue deduzir)
         amount: AMOUNT_MZN,
         phone,
-        reference: REFERENCE,
+        reference: newReference(),
         name: nome,
         email
       };
 
       try{
-        const url = API_BASE + (metodo === 'mpesa' ? ENDPOINTS.mpesa : ENDPOINTS.emola);
-        const { data } = await axios.post(url, payload, {
+        const { data } = await axios.post(`${API_BASE}${CHECKOUT_ENDPOINT}`, payload, {
           headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
-          timeout: 60_000
+          timeout: 120000
         });
 
-        // sucesso genérico (ajuste conforme a resposta do seu backend)
-        statusBar.textContent = '✅ Pedido enviado. Abra o M-Pesa/e-Mola e confirme o pagamento.';
-        // redirecionar se quiser:
-        // window.location.href = 'https://alwayshealthy.live/upsell-1/';
+        if (data && data.ok){
+          statusBar.textContent = '✅ Pedido enviado. Abra o M-Pesa/e-Mola e confirme o pagamento.';
+          // Ex.: redirecionar depois de 2s
+          // setTimeout(() => location.href='https://alwayshealthy.live/upsell-1/', 2000);
+        } else {
+          statusBar.textContent = '⚠️ Não foi possível iniciar. Tente novamente.';
+          alert('Resposta inesperada:\n' + JSON.stringify(data));
+        }
       }catch(err){
         const d = err?.response?.data;
-        const msg = d ? JSON.stringify(d) : (err?.message || 'Erro desconhecido');
+        const msg = d ? (typeof d === 'string' ? d : JSON.stringify(d)) : (err?.message || 'Erro desconhecido');
         alert('Falha ao iniciar o pagamento:\n' + msg);
         statusBar.textContent = '⚠️ Erro ao enviar o pedido. Tente novamente.';
       }finally{
@@ -192,8 +202,3 @@
 </body>
 </html>
 
-
-    document.getElementById('btnPagar').addEventListener('click', pagar);
-  </script>
-</body>
-</html>
