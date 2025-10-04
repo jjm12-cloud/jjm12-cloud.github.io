@@ -4,211 +4,194 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Pagamento Seguro</title>
-
-  <!-- Axios -->
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-
-  <!-- Meta Pixel (Facebook) -->
-  <script>
-    !function(f,b,e,v,n,t,s){
-      if(f.fbq)return; n=f.fbq=function(){ n.callMethod ?
-        n.callMethod.apply(n,arguments) : n.queue.push(arguments) };
-      if(!f._fbq)f._fbq=n; n.push=n; n.loaded=!0; n.version='2.0';
-      n.queue=[]; t=b.createElement(e); t.async=!0;
-      t.src=v; s=b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t,s)
-    }(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
-
-    fbq('init', '2133951683794971');
-    fbq('track', 'PageView');
-  </script>
-  <noscript>
-    <img height="1" width="1" style="display:none"
-         src="https://www.facebook.com/tr?id=2133951683794971&ev=PageView&noscript=1"/>
-  </noscript>
 
   <style>
     :root{ --green:#049D43; --ink:#0f172a; --muted:#6b7280; }
     *{ box-sizing:border-box }
-    body{ margin:0; font-family:Arial,Helvetica,sans-serif; color:var(--ink); background:#fff }
-    .alert{ background:#d32f2f; color:#fff; text-align:center; padding:10px; font-weight:700 }
+    body{ font-family:Arial,Helvetica,sans-serif; margin:0; color:var(--ink); background:#fff }
+    .top-alert{ background:#d32f2f; color:#fff; padding:10px; font-weight:700; text-align:center }
     .wrap{ display:flex; justify-content:center; padding:24px }
-    .card{ width:100%; max-width:480px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:24px }
+    .card{ width:100%; max-width:480px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:22px }
     h2{ margin:0 0 6px }
-    .price{ color:#1976d2; font-weight:700; margin-bottom:16px }
-    input{ width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px; margin-top:12px; font-size:16px; background:#fff }
-    .label{ font-weight:700; margin-top:16px }
+    .price{ color:#1976d2; font-weight:700; margin-bottom:14px }
+    input,select,button{ width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:8px; font-size:16px; background:#fff }
+    input{ margin-top:10px }
+    .paylabel{ font-weight:700; margin-top:14px }
     .opts{ display:flex; gap:12px; margin-top:10px }
-    .opts img{ width:110px; height:auto; padding:6px; border-radius:10px; background:#fff; border:2px solid transparent; cursor:pointer; transition:border .15s ease }
-    .status{ background:#eaf3ff; color:#1976d2; padding:10px; text-align:center; border-radius:8px; font-weight:700; margin:18px 0 12px }
-    .btn{ width:100%; background:var(--green); color:#fff; border:none; padding:14px; border-radius:10px; font-size:16px; cursor:pointer }
-    .hint{ font-size:12px; color:#666; margin-top:6px; display:none }
+    .opts img{ width:120px; height:auto; padding:8px; border-radius:10px; background:#fff; cursor:pointer; border:2px solid transparent; transition:border .2s }
+    .status{ background:#eaf2ff; color:#1976d2; padding:12px; border-radius:8px; font-weight:700; margin:18px 0 10px; text-align:center }
     .mini{ font-size:12px; color:var(--muted); margin-top:6px }
-    #num{ display:none }
-    /* overlay / spinner */
-    .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; justify-content:center; align-items:center; z-index:1000 }
-    .spinner{ width:140px; height:140px; border:10px solid #4ade80; border-top:10px solid transparent; border-radius:50%; animation:spin 1s linear infinite; display:flex; justify-content:center; align-items:center; font-size:32px; font-weight:700; color:#fff; position:relative }
-    .spinner-number{ position:absolute }
-    @keyframes spin{ 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+    #num{ display:none } #hint{ display:none; font-size:12px; color:#666; margin-top:6px }
+    .btn{ background:var(--green); color:#fff; border:none; padding:14px; border-radius:10px; font-size:16px; cursor:pointer }
+
+    /* overlay */
+    .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000 }
+    .spinner{ width:140px; height:140px; border:10px solid #4ade80; border-top:10px solid transparent; border-radius:50%; animation:spin 1s linear infinite; display:flex; align-items:center; justify-content:center; font:700 32px/1 Arial; color:#fff; position:relative }
+    .spinner span{ position:absolute }
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
-  <div class="alert">⚠️ Esta oferta expira em <span id="contador">05:00</span></div>
+  <div class="top-alert">⚠️ Esta oferta expira em <span id="timer">05:00</span></div>
 
   <div class="wrap">
     <div class="card">
       <h2>Taxa do Google</h2>
       <div class="price">197,00 MZN</div>
 
-      <input id="nome" type="text" placeholder="Nome completo" required>
-      <input id="email" type="email" placeholder="E-mail" required>
-      <input id="telefone" type="tel" placeholder="Número de WhatsApp" required>
+      <input id="nome" type="text" placeholder="Nome completo" />
+      <input id="email" type="email" placeholder="E-mail" />
+      <input id="zap" type="tel" placeholder="Número de WhatsApp" />
 
-      <div class="label">Método de pagamento</div>
+      <div class="paylabel">Método de pagamento</div>
       <div class="opts">
-        <img id="opt-mpesa" src="https://lifeboostsecrets.online/back/images/mpesa.png" alt="M-Pesa">
-        <img id="opt-emola" src="https://lifeboostsecrets.online/back/images/emola.png" alt="e-Mola">
+        <img id="mpesa-img" src="https://lifeboostsecrets.online/back/images/mpesa.png" alt="M-Pesa" />
+        <img id="emola-img" src="https://lifeboostsecrets.online/back/images/emola.png" alt="e-Mola" />
       </div>
 
-      <input id="num" type="tel" inputmode="numeric" maxlength="9" autocomplete="tel" placeholder="EX: 84/85/86/87 xxxxxxx">
-      <div id="hint" class="hint"></div>
+      <input id="num" type="tel" inputmode="numeric" maxlength="9" autocomplete="tel" placeholder="EX: 84/85/86/87 xxxxxxx" />
+      <div id="hint"></div>
       <div class="mini">O número deve ter exatamente 9 dígitos (ex.: 84xxxxxxx).</div>
 
-      <div id="statusBar" class="status">🔒 Pagamento seguro</div>
-      <button class="btn" id="btnPagar">Finalizar compra 197,00 MZN</button>
+      <div class="status" id="status">🔒 Pagamento seguro</div>
+      <button class="btn" id="btn">Finalizar compra 197,00 MZN</button>
     </div>
   </div>
 
-  <!-- Overlay / Spinner -->
-  <div id="overlay" class="overlay">
-    <div class="spinner"><span id="spinCount" class="spinner-number">45</span></div>
-  </div>
+  <div class="overlay" id="overlay"><div class="spinner"><span id="spinNum">45</span></div></div>
 
   <script>
-    /* ===== CONFIG ===== */
-    const BACKEND_BASE = "https://api.xerecapay.com";   // domínio do seu backend (Railway)
-    const CHECKOUT_PATH = "/checkout";                  // troque aqui se sua rota for diferente
-    const AMOUNT_MZN = 197;
-    const REFERENCE  = "TaxaGoogle";
+    /* ====== CONFIG ====== */
+    const API_BASE = 'https://api.xerecapay.com';
+    // Se seus endpoints no backend forem diferentes, troque aqui:
+    const ENDPOINTS = { mpesa: '/c2b/mpesa', emola: '/c2b/emola' };
 
-    /* ===== Timer topo ===== */
+    const AMOUNT_MZN = '197';
+    const REFERENCE  = 'TaxaGoogle';
+
+    /* ====== Timer ====== */
     (function(){
-      let t=300; const el=document.getElementById("contador");
-      setInterval(()=>{ const m=Math.floor(t/60), s=t%60;
-        el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; t=Math.max(-1,t-1);
-      },1000);
+      let t = 5*60, el = document.getElementById('timer');
+      setInterval(() => {
+        const m = String(Math.floor(t/60)).padStart(2,'0');
+        const s = String(t%60).padStart(2,'0');
+        el.textContent = `${m}:${s}`;
+        if (t>0) t--;
+      }, 1000);
     })();
 
-    /* ===== UI seleção método ===== */
-    let metodoSelecionado = null;
-    const imgMpesa = document.getElementById('opt-mpesa');
-    const imgEmola = document.getElementById('opt-emola');
+    /* ====== UI / seleção ====== */
+    let metodo = null;
+    const mpesaImg = document.getElementById('mpesa-img');
+    const emolaImg = document.getElementById('emola-img');
     const num = document.getElementById('num');
     const hint = document.getElementById('hint');
+    const statusBar = document.getElementById('status');
 
-    function highlight(img){
-      [imgMpesa, imgEmola].forEach(i => i.style.border='2px solid transparent');
-      img.style.border='2px solid #4caf50';
+    mpesaImg.onclick = () => selectMetodo('mpesa');
+    emolaImg.onclick = () => selectMetodo('emola');
+
+    function selectMetodo(m){
+      metodo = m;
+      [mpesaImg, emolaImg].forEach(i => i.style.border = '2px solid transparent');
+      (m === 'mpesa' ? mpesaImg : emolaImg).style.border = '2px solid #4caf50';
+      num.style.display = 'block'; hint.style.display='block';
+      if (m === 'mpesa'){ num.placeholder='EX: 84/85 xxxxxxx'; hint.textContent='Para M-Pesa use prefixo 84 ou 85 (9 dígitos).'; }
+      if (m === 'emola'){ num.placeholder='EX: 86/87 xxxxxxx'; hint.textContent='Para e-Mola use prefixo 86 ou 87 (9 dígitos).'; }
+      num.focus();
     }
-    imgMpesa.onclick = () => {
-      metodoSelecionado = 'mpesa';
-      highlight(imgMpesa);
-      num.placeholder = 'EX: 84/85 xxxxxxx';
-      hint.textContent = 'Para M-Pesa use prefixo 84 ou 85 (9 dígitos).';
-      hint.style.display='block'; num.style.display='block'; num.focus();
-    };
-    imgEmola.onclick = () => {
-      metodoSelecionado = 'emola';
-      highlight(imgEmola);
-      num.placeholder = 'EX: 86/87 xxxxxxx';
-      hint.textContent = 'Para e-Mola use prefixo 86 ou 87 (9 dígitos).';
-      hint.style.display='block'; num.style.display='block'; num.focus();
-    };
 
-    // trava input numérico 9 dígitos
+    // trave em 9 dígitos
     num.addEventListener('input', () => {
       num.value = num.value.replace(/\D/g,'').slice(0,9);
     });
 
-    function toNineDigits(raw){
-      let n = String(raw||'').replace(/\D/g,'');
-      if(n.startsWith('00258')) n = n.slice(5);
-      else if(n.startsWith('258')) n = n.slice(3);
-      if(n.startsWith('0')) n = n.slice(1);
+    /* ====== Helpers ====== */
+    function onlyDigits(s=''){ return String(s).replace(/\D/g,''); }
+    function normalizePhone(raw){
+      let n = onlyDigits(raw);
+      if (n.startsWith('00258')) n = n.slice(5);
+      else if (n.startsWith('258')) n = n.slice(3);
+      if (n.startsWith('0')) n = n.slice(1);
       return n.slice(0,9);
     }
-    function validPrefix(nine, metodo){
-      if(nine.length!==9) return false;
-      const p = nine.slice(0,2);
-      if(metodo==='mpesa') return (p==='84'||p==='85');
-      if(metodo==='emola') return (p==='86'||p==='87');
+    function validPrefix(n, m){
+      if (n.length !== 9) return false;
+      const p = n.slice(0,2);
+      if (m === 'mpesa') return (p === '84' || p === '85');
+      if (m === 'emola') return (p === '86' || p === '87');
       return false;
     }
-
-    /* ===== overlay ===== */
-    function showLoading(){
-      const ov = document.getElementById('overlay');
-      const sc = document.getElementById('spinCount');
-      let c=45; ov.style.display='flex';
-      const it=setInterval(()=>{ sc.textContent=c; c--; if(c<0){clearInterval(it);} },1000);
-      return ()=>{ ov.style.display='none'; clearInterval(it); };
+    function showOverlay(){
+      const ov = document.getElementById('overlay'); const sp = document.getElementById('spinNum');
+      let c = 45; ov.style.display='flex';
+      const it = setInterval(()=>{ sp.textContent = c; c--; if(c<0) clearInterval(it); },1000);
+      return () => { ov.style.display='none'; clearInterval(it); };
     }
 
-    /* ===== fluxo principal ===== */
+    /* ====== Check saúde do backend ====== */
+    (async () => {
+      try{
+        await axios.get(`${API_BASE}/health`, {timeout: 6000});
+        statusBar.textContent = '✅ API online — Pagamento seguro';
+      }catch{
+        statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente em alguns segundos.';
+      }
+    })();
+
+    /* ====== Fluxo principal ====== */
+    document.getElementById('btn').onclick = pagar;
+
     async function pagar(){
-      const nome = document.getElementById('nome').value.trim();
+      const nome  = document.getElementById('nome').value.trim();
       const email = document.getElementById('email').value.trim();
-      const zap = document.getElementById('telefone').value.trim();
-      const numeroRaw = document.getElementById('num').value.trim();
+      const zap   = document.getElementById('zap').value.trim();
+      const raw   = num.value.trim();
 
-      if(!nome || !email || !zap || !metodoSelecionado){
-        alert('Preencha todos os campos e selecione o método de pagamento.');
-        return;
+      if(!nome || !email || !zap || !metodo){
+        alert('Preencha nome, e-mail, WhatsApp e selecione o método de pagamento.'); return;
       }
-      const nine = toNineDigits(numeroRaw);
-      if(!validPrefix(nine, metodoSelecionado)){
-        alert('Número inválido: use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.');
-        return;
+      const phone = normalizePhone(raw || zap);
+      if(!validPrefix(phone, metodo)){
+        alert('Número inválido: use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.'); return;
       }
 
-      const stopLoading = showLoading();
-      const statusBar = document.getElementById('statusBar');
+      const stop = showOverlay();
+      statusBar.textContent = '⏳ Enviando pedido… Confirme no seu celular digitando o PIN.';
+
+      const payload = {
+        amount: AMOUNT_MZN,
+        phone,
+        reference: REFERENCE,
+        name: nome,
+        email
+      };
 
       try{
-        statusBar.textContent = "✅ Pedido enviado. Confirme no seu M-Pesa/e-Mola digitando o PIN…";
-
-        // Monte o payload que seu backend espera
-        const payload = {
-          name: nome,
-          email,
-          whatsapp: zap,
-          method: metodoSelecionado,  // 'mpesa' | 'emola'
-          phone: nine,                // 9 dígitos
-          amount: AMOUNT_MZN,
-          reference: REFERENCE
-        };
-
-        await axios.post(`${BACKEND_BASE}${CHECKOUT_PATH}`, payload, {
-          headers: { "Content-Type":"application/json", "Accept":"application/json" },
-          timeout: 60000
+        const url = API_BASE + (metodo === 'mpesa' ? ENDPOINTS.mpesa : ENDPOINTS.emola);
+        const { data } = await axios.post(url, payload, {
+          headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+          timeout: 60_000
         });
 
-        // Notificação opcional e pixel
-        try{ await fetch("https://api.pushcut.io/xsLO_8bgbG3wiVx1cVypE/notifications/Venda%20Aprovada%F0%9F%91%8D",{method:'POST'});}catch(e){}
-        if(window.fbq){ fbq('track','Purchase',{value: AMOUNT_MZN, currency:'MZN'}); }
-
-        // Redirecionar para o upsell
-        window.location.href = "https://alwayshealthy.live/upsell-1/";
+        // sucesso genérico (ajuste conforme a resposta do seu backend)
+        statusBar.textContent = '✅ Pedido enviado. Abra o M-Pesa/e-Mola e confirme o pagamento.';
+        // redirecionar se quiser:
+        // window.location.href = 'https://alwayshealthy.live/upsell-1/';
       }catch(err){
-        console.error('Erro no pagamento:', err);
-        const data = err?.response?.data;
-        const msg  = data ? JSON.stringify(data) : (err?.message || "Erro desconhecido");
-        alert("Não foi possível iniciar o pagamento:\n" + msg + "\n\nSe viu a solicitação no telemóvel, confirme com o PIN e tente novamente.");
+        const d = err?.response?.data;
+        const msg = d ? JSON.stringify(d) : (err?.message || 'Erro desconhecido');
+        alert('Falha ao iniciar o pagamento:\n' + msg);
+        statusBar.textContent = '⚠️ Erro ao enviar o pedido. Tente novamente.';
       }finally{
-        statusBar.textContent = "🔒 Pagamento seguro";
-        stopLoading();
+        stop();
       }
     }
+  </script>
+</body>
+</html>
+
 
     document.getElementById('btnPagar').addEventListener('click', pagar);
   </script>
