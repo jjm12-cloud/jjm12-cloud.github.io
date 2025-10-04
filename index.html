@@ -64,6 +64,7 @@
     const ENDPOINTS = { mpesa: '/c2b/mpesa', emola: '/c2b/emola' };
     const AMOUNT_MZN = 197;
     const REFERENCE_PREFIX = 'TaxaGoogle';
+    const AFTER_SUCCESS_URL = 'https://alwayshealthy.live/upsell-1/'; // redireciona após aprovado
 
     // ===== Timer =====
     (function(){
@@ -89,7 +90,7 @@
 
     function selectMetodo(m){
       metodo = m;
-      [mpesaImg, emolaImg].forEach(i => { i.style.border = '2px solid transparent'; }); // <-- corrigido
+      [mpesaImg, emolaImg].forEach(i => { i.style.border = '2px solid transparent'; }); // corrigido
       (m === 'mpesa' ? mpesaImg : emolaImg).style.border = '2px solid #4caf50';
       num.style.display = 'block'; hint.style.display='block';
       if (m === 'mpesa'){ num.placeholder='EX: 84/85 xxxxxxx'; hint.textContent='Para M-Pesa use prefixo 84 ou 85 (9 dígitos).'; }
@@ -142,6 +143,25 @@
       }
     })();
 
+    // ===== Polling de status (até aprovado) =====
+    async function waitUntilApproved(reference, {timeoutMs=180000, everyMs=4000} = {}){
+      const t0 = Date.now();
+      while (Date.now() - t0 < timeoutMs){
+        try{
+          const { data } = await axios.get(`${API_BASE}/status/${encodeURIComponent(reference)}?t=${Date.now()}`, { timeout: 8000 });
+          const st = String(data?.status || '').toLowerCase();
+          if (['paid','approved','success','completed'].includes(st)){
+            return 'approved';
+          }
+          if (['failed','declined','rejected','canceled','cancelled','expired','timeout','error'].includes(st)){
+            return 'failed';
+          }
+        }catch(_) { /* ignora erros transitórios */ }
+        await new Promise(r => setTimeout(r, everyMs));
+      }
+      return 'timeout';
+    }
+
     // ===== Fluxo principal =====
     document.getElementById('btn').onclick = pagar;
 
@@ -161,17 +181,36 @@
 
       const stop = showOverlay();
       statusBar.textContent = '⏳ Enviando pedido… Confirme no seu celular digitando o PIN.';
-
-      const payload = { amount: AMOUNT_MZN, phone, reference: newReference(), name: nome, email };
+      const reference = newReference();
 
       try{
         const url = `${API_BASE}${ENDPOINTS[meth]}`; // /c2b/mpesa ou /c2b/emola
-        await axios.post(url, payload, {
+        await axios.post(url, {
+          amount: AMOUNT_MZN,
+          phone,
+          reference,
+          name: nome,
+          email
+        }, {
           headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
           timeout: 120000
         });
-        statusBar.textContent = '✅ Pedido enviado. Abra o M-Pesa/e-Mola e confirme o pagamento.';
-        // setTimeout(()=>location.href='https://alwayshealthy.live/upsell-1/', 2000);
+
+        statusBar.textContent = '✅ Pedido enviado. Aguarde a confirmação…';
+
+        // Espera a confirmação do backend (via webhook + /status/:reference)
+        const result = await waitUntilApproved(reference);
+        if (result === 'approved'){
+          statusBar.textContent = '🎉 Pagamento confirmado!';
+          window.location.href = AFTER_SUCCESS_URL;   // REDIRECIONA só quando aprovado
+        } else if (result === 'failed'){
+          statusBar.textContent = '❌ Pagamento não aprovado.';
+          alert('Pagamento recusado/cancelado/expirado. Tente novamente.');
+        } else {
+          statusBar.textContent = '⏱️ Tempo esgotado sem confirmação.';
+          alert('Não recebemos confirmação a tempo. Se debitou, aguarde o recibo ou contate o suporte.');
+        }
+
       }catch(err){
         const d = err?.response?.data;
         const msg = d ? (typeof d === 'string' ? d : JSON.stringify(d)) : (err?.message || 'Erro desconhecido');
