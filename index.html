@@ -59,16 +59,16 @@
   <div class="overlay" id="overlay"><div class="spinner"><span id="spinNum">45</span></div></div>
 
   <script>
-    // ===== CONFIG =====
+    /* ===== CONFIG ===== */
     const API_BASE = 'https://api.xerecapay.com';
     const AMOUNT_MZN = 197;
     const REFERENCE_PREFIX = 'TaxaGoogle';
     const AFTER_SUCCESS_URL = 'https://alwayshealthy.live/upsell-1/';
 
-    // ===== util fbc/fbp e UTM =====
-    function getCookie(name){ return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.split('=')[1]; }
+    /* ===== util fbc/fbp e UTM ===== */
+    function getCookie(name){ return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.split('=')[1] || null; }
     const urlp = new URLSearchParams(location.search);
-    const fbp = getCookie('_fbp') || null;
+    const fbp = getCookie('_fbp');
     const fbc = getCookie('_fbc') || (urlp.get('fbclid') ? `fb.1.${Date.now()}.${urlp.get('fbclid')}` : null);
     const utm = {
       utm_source:  urlp.get('utm_source')  || null,
@@ -79,7 +79,7 @@
       fbc, fbp
     };
 
-    // ===== Timer =====
+    /* ===== Timer ===== */
     (function(){
       let t = 5*60, el = document.getElementById('timer');
       setInterval(() => {
@@ -90,7 +90,7 @@
       }, 1000);
     })();
 
-    // ===== UI =====
+    /* ===== UI ===== */
     let metodo = null;
     const mpesaImg = document.getElementById('mpesa-img');
     const emolaImg = document.getElementById('emola-img');
@@ -112,7 +112,7 @@
     }
     num.addEventListener('input', () => { num.value = num.value.replace(/\D/g,'').slice(0,9); });
 
-    // ===== Helpers =====
+    /* ===== Helpers ===== */
     const onlyDigits = s => String(s||'').replace(/\D/g,'');
     function normalizePhone(raw){
       let n = onlyDigits(raw);
@@ -136,32 +136,13 @@
       return () => { ov.style.display='none'; clearInterval(it); };
     }
 
-    // ===== Saúde do backend (silencioso) =====
+    /* ===== Saúde do backend (opcional) ===== */
     (async () => {
-      try{
-        await axios.get(`${API_BASE}/health`, {timeout: 6000});
-        // Sucesso: não muda a barra de status (mantém "🔒 Pagamento seguro")
-      }catch{
-        statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente.';
-      }
+      try{ await axios.get(`${API_BASE}/health`, {timeout: 6000}); }
+      catch{ statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente.'; }
     })();
 
-    // ===== Polling de status até aprovado =====
-    async function waitUntilApproved(reference, {timeoutMs=180000, everyMs=4000} = {}){
-      const t0 = Date.now();
-      while (Date.now() - t0 < timeoutMs){
-        try{
-          const { data } = await axios.get(`${API_BASE}/status/${encodeURIComponent(reference)}?t=${Date.now()}`, { timeout: 8000 });
-          const st = String(data?.status || '').toLowerCase();
-          if (['paid','approved','success','completed'].includes(st)) return 'approved';
-          if (['failed','declined','rejected','canceled','cancelled','expired','timeout','error','refused'].includes(st)) return 'failed';
-        }catch(_) {}
-        await new Promise(r => setTimeout(r, everyMs));
-      }
-      return 'timeout';
-    }
-
-    // ===== Fluxo principal =====
+    /* ===== Fluxo principal — usa /api/pagar ===== */
     document.getElementById('btn').onclick = pagar;
 
     async function pagar(){
@@ -171,9 +152,9 @@
       const raw   = num.value.trim();
 
       if(!nome || !email || !zap){ alert('Preencha nome, e-mail e WhatsApp.'); return; }
+      const meth  = metodo; if(!meth){ alert('Selecione M-Pesa ou e-Mola.'); return; }
+
       const phone = normalizePhone(raw || zap);
-      const meth  = metodo; // obrigatório escolher
-      if(!meth){ alert('Selecione M-Pesa ou e-Mola.'); return; }
       if(!validPrefix(phone, meth)){ alert('Número inválido: 84/85 (M-Pesa) ou 86/87 (e-Mola), com 9 dígitos.'); return; }
 
       const stop = showOverlay();
@@ -181,32 +162,34 @@
       const reference = newReference();
 
       try{
-        // chama a rota certa do backend conforme o método
-        await axios.post(`${API_BASE}/c2b/${meth}`, {
-          amount: AMOUNT_MZN,
+        const body = {
+          metodo: meth,
           phone,
+          amount: AMOUNT_MZN,
           reference,
-          name: nome,
-          email,
-          utm
-        }, { headers: {'Content-Type':'application/json'}, timeout: 120000 });
+          orderId: reference,
+          nome: nome,
+          email: email,
+          utm_source:   utm.utm_source,
+          utm_medium:   utm.utm_medium,
+          utm_campaign: utm.utm_campaign,
+          utm_term:     utm.utm_term,
+          utm_content:  utm.utm_content,
+          fbc: utm.fbc,
+          fbp: utm.fbp
+        };
 
-        statusBar.textContent = '✅ Pedido enviado. Aguarde a confirmação…';
+        const { data, status } = await axios.post(`${API_BASE}/api/pagar`, body, {
+          headers:{'Content-Type':'application/json'}, timeout: 120000
+        });
 
-        const result = await waitUntilApproved(reference);
-        if (result === 'approved'){
-          statusBar.textContent = '🎉 Pagamento confirmado!';
-          location.href = AFTER_SUCCESS_URL;
-        } else if (result === 'failed'){
-          statusBar.textContent = '❌ Pagamento não aprovado.';
-          alert('Pagamento recusado/cancelado/expirado. Tente novamente.');
-        } else {
-          statusBar.textContent = '⏱️ Tempo esgotado sem confirmação.';
-          alert('Não recebemos confirmação a tempo. Se debitou, aguarde o recibo ou contate o suporte.');
-        }
+        if (status!==200 || data?.status!=='ok') throw new Error(data?.message || 'Falha ao processar');
+
+        statusBar.textContent = '🎉 Pagamento enviado! Redirecionando…';
+        setTimeout(()=>{ location.href = AFTER_SUCCESS_URL; }, 800);
 
       }catch(err){
-        const msg = err?.response?.data?.details || err?.response?.data?.message || err?.message || 'Erro desconhecido';
+        const msg = err?.response?.data?.details?.message || err?.response?.data?.message || err?.message || 'Erro';
         alert('Falha ao processar o pagamento:\n' + msg);
         statusBar.textContent = '⚠️ Erro ao enviar o pedido. Tente novamente.';
       }finally{
@@ -214,6 +197,9 @@
       }
     }
   </script>
+</body>
+</html>
+
 </body>
 </html>
 
