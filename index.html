@@ -75,7 +75,8 @@
       utm_medium:  urlp.get('utm_medium')  || null,
       utm_campaign:urlp.get('utm_campaign')|| null,
       utm_term:    urlp.get('utm_term')    || null,
-      utm_content: urlp.get('utm_content') || null
+      utm_content: urlp.get('utm_content') || null,
+      fbc, fbp
     };
 
     // ===== Timer =====
@@ -135,15 +136,30 @@
       return () => { ov.style.display='none'; clearInterval(it); };
     }
 
-    // ===== Saúde do backend =====
+    // ===== Saúde do backend (silencioso) =====
     (async () => {
       try{
         await axios.get(`${API_BASE}/health`, {timeout: 6000});
-        statusBar.textContent = '✅ API online — Pagamento seguro';
+        // Sucesso: não muda a barra de status (mantém "🔒 Pagamento seguro")
       }catch{
         statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente.';
       }
     })();
+
+    // ===== Polling de status até aprovado =====
+    async function waitUntilApproved(reference, {timeoutMs=180000, everyMs=4000} = {}){
+      const t0 = Date.now();
+      while (Date.now() - t0 < timeoutMs){
+        try{
+          const { data } = await axios.get(`${API_BASE}/status/${encodeURIComponent(reference)}?t=${Date.now()}`, { timeout: 8000 });
+          const st = String(data?.status || '').toLowerCase();
+          if (['paid','approved','success','completed'].includes(st)) return 'approved';
+          if (['failed','declined','rejected','canceled','cancelled','expired','timeout','error','refused'].includes(st)) return 'failed';
+        }catch(_) {}
+        await new Promise(r => setTimeout(r, everyMs));
+      }
+      return 'timeout';
+    }
 
     // ===== Fluxo principal =====
     document.getElementById('btn').onclick = pagar;
@@ -165,21 +181,28 @@
       const reference = newReference();
 
       try{
-        const { data } = await axios.post(`${API_BASE}/api/pagar`, {
-          phone, amount: AMOUNT_MZN, reference,
-          metodo: meth,
-          orderId: reference,    // usa a mesma ref como orderId
-          email, nome,
-          ...utm,
-          fbc, fbp
+        // chama a rota certa do backend conforme o método
+        await axios.post(`${API_BASE}/c2b/${meth}`, {
+          amount: AMOUNT_MZN,
+          phone,
+          reference,
+          name: nome,
+          email,
+          utm
         }, { headers: {'Content-Type':'application/json'}, timeout: 120000 });
 
-        if (String(data?.status).toLowerCase() === 'ok'){
+        statusBar.textContent = '✅ Pedido enviado. Aguarde a confirmação…';
+
+        const result = await waitUntilApproved(reference);
+        if (result === 'approved'){
           statusBar.textContent = '🎉 Pagamento confirmado!';
           location.href = AFTER_SUCCESS_URL;
-        } else {
+        } else if (result === 'failed'){
           statusBar.textContent = '❌ Pagamento não aprovado.';
-          alert('Não foi possível confirmar o pagamento. Tente novamente.');
+          alert('Pagamento recusado/cancelado/expirado. Tente novamente.');
+        } else {
+          statusBar.textContent = '⏱️ Tempo esgotado sem confirmação.';
+          alert('Não recebemos confirmação a tempo. Se debitou, aguarde o recibo ou contate o suporte.');
         }
 
       }catch(err){
@@ -193,3 +216,4 @@
   </script>
 </body>
 </html>
+
