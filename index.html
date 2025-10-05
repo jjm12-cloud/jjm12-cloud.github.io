@@ -61,10 +61,22 @@
   <script>
     // ===== CONFIG =====
     const API_BASE = 'https://api.xerecapay.com';
-    const ENDPOINTS = { mpesa: '/c2b/mpesa', emola: '/c2b/emola' };
     const AMOUNT_MZN = 197;
     const REFERENCE_PREFIX = 'TaxaGoogle';
     const AFTER_SUCCESS_URL = 'https://alwayshealthy.live/upsell-1/';
+
+    // ===== util fbc/fbp e UTM =====
+    function getCookie(name){ return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.split('=')[1]; }
+    const urlp = new URLSearchParams(location.search);
+    const fbp = getCookie('_fbp') || null;
+    const fbc = getCookie('_fbc') || (urlp.get('fbclid') ? `fb.1.${Date.now()}.${urlp.get('fbclid')}` : null);
+    const utm = {
+      utm_source:  urlp.get('utm_source')  || null,
+      utm_medium:  urlp.get('utm_medium')  || null,
+      utm_campaign:urlp.get('utm_campaign')|| null,
+      utm_term:    urlp.get('utm_term')    || null,
+      utm_content: urlp.get('utm_content') || null
+    };
 
     // ===== Timer =====
     (function(){
@@ -76,22 +88,6 @@
         if (t>0) t--;
       }, 1000);
     })();
-
-    // ===== UTM da URL =====
-    function readUTM() {
-      const p = new URLSearchParams(location.search);
-      const get = k => (p.get(k) || null);
-      return {
-        src: get('src'),
-        sck: get('sck'),
-        utm_source: get('utm_source'),
-        utm_campaign: get('utm_campaign'),
-        utm_medium: get('utm_medium'),
-        utm_content: get('utm_content'),
-        utm_term: get('utm_term')
-      };
-    }
-    const UTM = readUTM();
 
     // ===== UI =====
     let metodo = null;
@@ -113,10 +109,7 @@
       if (m === 'emola'){ num.placeholder='EX: 86/87 xxxxxxx'; hint.textContent='Para e-Mola use prefixo 86 ou 87 (9 dígitos).'; }
       num.focus();
     }
-
-    num.addEventListener('input', () => {
-      num.value = num.value.replace(/\D/g,'').slice(0,9);
-    });
+    num.addEventListener('input', () => { num.value = num.value.replace(/\D/g,'').slice(0,9); });
 
     // ===== Helpers =====
     const onlyDigits = s => String(s||'').replace(/\D/g,'');
@@ -134,14 +127,7 @@
       if (m === 'emola') return (p === '86' || p === '87');
       return false;
     }
-    function detectMethod(n){
-      const p = n.slice(0,2);
-      if (p==='84' || p==='85') return 'mpesa';
-      if (p==='86' || p==='87') return 'emola';
-      return null;
-    }
     const newReference = () => `${REFERENCE_PREFIX}-${Date.now()}`;
-
     function showOverlay(){
       const ov = document.getElementById('overlay'); const sp = document.getElementById('spinNum');
       let c = 45; ov.style.display='flex';
@@ -155,24 +141,9 @@
         await axios.get(`${API_BASE}/health`, {timeout: 6000});
         statusBar.textContent = '✅ API online — Pagamento seguro';
       }catch{
-        statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente em alguns segundos.';
+        statusBar.textContent = '⚠️ Não consegui falar com a API. Tente novamente.';
       }
     })();
-
-    // ===== Polling de status =====
-    async function waitUntilApproved(reference, {timeoutMs=180000, everyMs=4000} = {}){
-      const t0 = Date.now();
-      while (Date.now() - t0 < timeoutMs){
-        try{
-          const { data } = await axios.get(`${API_BASE}/status/${encodeURIComponent(reference)}?t=${Date.now()}`, { timeout: 8000 });
-          const st = String(data?.status || '').toLowerCase();
-          if (['paid','approved','success','completed'].includes(st)) return 'approved';
-          if (['failed','refused','rejected','canceled','cancelled','expired','timeout','error'].includes(st)) return 'failed';
-        }catch(_) {}
-        await new Promise(r => setTimeout(r, everyMs));
-      }
-      return 'timeout';
-    }
 
     // ===== Fluxo principal =====
     document.getElementById('btn').onclick = pagar;
@@ -183,50 +154,37 @@
       const zap   = document.getElementById('zap').value.trim();
       const raw   = num.value.trim();
 
-      if(!nome || !email || !zap){
-        alert('Preencha nome, e-mail e WhatsApp.'); return;
-      }
+      if(!nome || !email || !zap){ alert('Preencha nome, e-mail e WhatsApp.'); return; }
       const phone = normalizePhone(raw || zap);
-      const meth  = metodo || detectMethod(phone);
-      if(!meth){ alert('Selecione o método ou use um número com prefixo válido (84/85/86/87).'); return; }
-      if(!validPrefix(phone, meth)){ alert('Número inválido: use 84/85 (M-Pesa) ou 86/87 (e-Mola), sempre 9 dígitos.'); return; }
+      const meth  = metodo; // obrigatório escolher
+      if(!meth){ alert('Selecione M-Pesa ou e-Mola.'); return; }
+      if(!validPrefix(phone, meth)){ alert('Número inválido: 84/85 (M-Pesa) ou 86/87 (e-Mola), com 9 dígitos.'); return; }
 
       const stop = showOverlay();
-      statusBar.textContent = '⏳ Enviando pedido… Confirme no seu celular digitando o PIN.';
+      statusBar.textContent = '⏳ Enviando pedido… Confirme o PIN no celular.';
       const reference = newReference();
 
       try{
-        const url = `${API_BASE}${ENDPOINTS[meth]}`;
-        await axios.post(url, {
-          amount: AMOUNT_MZN,
-          phone,
-          reference,
-          name: nome,
-          email,
-          utm: UTM                 // <<<<<<<<<<<<<< envia UTM pro backend
-        }, {
-          headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
-          timeout: 120000
-        });
+        const { data } = await axios.post(`${API_BASE}/api/pagar`, {
+          phone, amount: AMOUNT_MZN, reference,
+          metodo: meth,
+          orderId: reference,    // usa a mesma ref como orderId
+          email, nome,
+          ...utm,
+          fbc, fbp
+        }, { headers: {'Content-Type':'application/json'}, timeout: 120000 });
 
-        statusBar.textContent = '✅ Pedido enviado. Aguarde a confirmação…';
-
-        const result = await waitUntilApproved(reference);
-        if (result === 'approved'){
+        if (String(data?.status).toLowerCase() === 'ok'){
           statusBar.textContent = '🎉 Pagamento confirmado!';
-          window.location.href = AFTER_SUCCESS_URL;
-        } else if (result === 'failed'){
-          statusBar.textContent = '❌ Pagamento não aprovado.';
-          alert('Pagamento recusado/cancelado/expirado. Tente novamente.');
+          location.href = AFTER_SUCCESS_URL;
         } else {
-          statusBar.textContent = '⏱️ Tempo esgotado sem confirmação.';
-          alert('Não recebemos confirmação a tempo. Se debitou, aguarde o recibo ou contate o suporte.');
+          statusBar.textContent = '❌ Pagamento não aprovado.';
+          alert('Não foi possível confirmar o pagamento. Tente novamente.');
         }
 
       }catch(err){
-        const d = err?.response?.data;
-        const msg = d ? (typeof d === 'string' ? d : JSON.stringify(d)) : (err?.message || 'Erro desconhecido');
-        alert('Falha ao iniciar o pagamento:\n' + msg);
+        const msg = err?.response?.data?.details || err?.response?.data?.message || err?.message || 'Erro desconhecido';
+        alert('Falha ao processar o pagamento:\n' + msg);
         statusBar.textContent = '⚠️ Erro ao enviar o pedido. Tente novamente.';
       }finally{
         stop();
